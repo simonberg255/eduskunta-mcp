@@ -1,5 +1,5 @@
+import base64
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP
 from mcp.server.fastmcp import Icon
 from starlette.requests import Request
-from starlette.responses import FileResponse, PlainTextResponse
+from starlette.responses import PlainTextResponse
 
 load_dotenv()
 
@@ -22,11 +22,9 @@ eduskunta = EduskuntaClient()
 ####### SERVER METADATA #######
 
 
-SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://localhost:8000").rstrip("/")
-LOGO_PATH = Path(__file__).parent / "logo.png"
-
+_logo_data = base64.b64encode((Path(__file__).parent / "logo.png").read_bytes()).decode()
 icon = Icon(
-    src=f"{SERVER_BASE_URL}/logo.png",
+    src=f"data:image/png;base64,{_logo_data}",
     mimeType="image/png",
 )
 
@@ -231,11 +229,6 @@ async def get_mp_list(active_only: bool = True) -> list | dict:
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
-
-
-@mcp.custom_route("/logo.png", methods=["GET"])
-async def serve_logo(request: Request) -> FileResponse:
-    return FileResponse(str(LOGO_PATH), media_type="image/png")
 
 
 ####### APP #######
