@@ -5,12 +5,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.jwt import JWTVerifier
 from mcp.server.fastmcp import Icon
-from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, PlainTextResponse
+from starlette.responses import FileResponse, PlainTextResponse
 
 load_dotenv()
 
@@ -22,48 +19,9 @@ logger = logging.getLogger(__name__)
 eduskunta = EduskuntaClient()
 
 
-####### API KEY #######
-
-
-verifier = JWTVerifier(
-    public_key=os.getenv("MCP_SERVER_JWT_SECRET"),
-    issuer=os.getenv("MCP_SERVER_JWT_ISSUER", ""),
-    audience=os.getenv("MCP_SERVER_JWT_AUDIENCE", ""),
-    algorithm="HS256",
-)
-
-
-####### MIDDLEWARE #######
-
-
-class IPAllowlistMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, allowed_ips: list[str]):
-        super().__init__(app)
-        self.allowed_ips = set(allowed_ips)
-        self.allow_all = "*" in self.allowed_ips
-
-    async def dispatch(self, request, call_next):
-        if self.allow_all:
-            return await call_next(request)
-
-        client_ip = request.client.host if request.client else None
-        if client_ip not in self.allowed_ips:
-            return JSONResponse(
-                status_code=403,
-                content={"error": "Forbidden", "your_ip": client_ip},
-            )
-        return await call_next(request)
-
-
-ALLOWED_IPS = ["*"]
-middleware = [Middleware(IPAllowlistMiddleware, allowed_ips=ALLOWED_IPS)]
-
-
 ####### SERVER METADATA #######
 
 
-# SERVER_BASE_URL must match the public URL where this server is reachable
-# (e.g. your ngrok HTTPS URL). Intric uses it to fetch the logo.
 SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://localhost:8000").rstrip("/")
 LOGO_PATH = Path(__file__).parent / "logo.png"
 
@@ -107,7 +65,6 @@ mcp = FastMCP(
     version=VERSION,
     website_url=WEBSITE_URL,
     icons=[icon],
-    auth=verifier,
     lifespan=lifespan,
 )
 
@@ -284,4 +241,4 @@ async def serve_logo(request: Request) -> FileResponse:
 ####### APP #######
 
 # Run with: uvicorn server:app --host 0.0.0.0 --port 8000
-app = mcp.http_app(middleware=middleware)
+app = mcp.http_app()
