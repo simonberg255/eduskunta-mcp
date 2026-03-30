@@ -1,86 +1,74 @@
 # Eduskunta MCP Server
 
-Finnish Parliament open data server built on [FastMCP](https://github.com/jlowin/fastmcp),
-designed for use with [Intric](https://www.intric.ai).
-
-Data source: [avoindata.eduskunta.fi](https://avoindata.eduskunta.fi) — fully public, no API key required.
+An MCP server that connects an AI assistant to the Finnish Parliament's open data API at [avoindata.eduskunta.fi](https://avoindata.eduskunta.fi). It provides structured access to parliamentary documents (government bills, committee reports, written questions), plenary vote records with per-MP breakdowns, and biographical data on current Members of Parliament — all sourced directly from the Parliament's official public API with no authentication required.
 
 ## Tools
 
 | Tool | Description |
 |---|---|
-| `list_tables` | Discover all available data tables |
-| `search_documents` | Search parliamentary documents (bills, reports, questions) |
-| `get_document_text` | Read the full text of a specific document |
-| `search_votes` | Search plenary vote sessions by keyword |
-| `get_vote_result` | Get per-MP vote breakdown with party summary |
-| `get_mp_list` | List Members of Parliament (active or historical) |
+| `list_tables` | List all available tables in the Finnish Parliament open data API |
+| `search_documents` | Search parliamentary documents by year, type, and committee |
+| `get_document_text` | Fetch the full text of a document by its Id (XML or PDF fallback) |
+| `search_votes` | Search plenary vote sessions by keyword and optional year |
+| `get_vote_result` | Get per-MP vote breakdown for a specific vote session |
+| `get_mp_list` | Get currently serving (or all) Members of Parliament |
 
-All tools run automatically in Intric — no user confirmation prompts.
+## How it works
 
-## Quick Start
+1. **Discover** — call `list_tables` to see all available data sources, or go directly to a known table.
+2. **Search** — use `search_documents` with a document type and year to find relevant bills or reports, or use `search_votes` with a keyword to find vote sessions.
+3. **Retrieve** — pass the `Id` from `search_documents` to `get_document_text`, or the `AanestysId` from `search_votes` to `get_vote_result`.
+4. **Explore MPs** — call `get_mp_list` to get the current parliament roster with party and constituency.
+
+## Quick start
 
 ```bash
-# 1. Set up environment
-cp .env.example .env
-# Edit .env — set MCP_SERVER_JWT_SECRET to a random string of 32+ chars
-
-# 2. Install dependencies
-python3 -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/SimonBerg255/eduskunta-mcp.git
+cd eduskunta-mcp
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# 3. Generate an API token for Intric
-python3 generate_token.py
-
-# 4. Start the server
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
-The MCP endpoint is available at `http://localhost:8000/mcp`.
+## API details
 
-## Connecting to Intric
+- **Base URL:** `https://avoindata.eduskunta.fi/api/v1`
+- **Protocol:** REST, JSON responses
+- **Authentication:** None — fully public
+- **Rate limits:** No documented limit; client uses 0.5 s delay between paginated requests and retries once on HTTP 429
+- **Response format:** Columnar envelope — `{"columnNames": [...], "rowData": [[...]], "hasMore": true/false}`
+- **License:** Open data, Finnish Parliament
 
-1. Expose the server with a public HTTPS URL (e.g. via [ngrok](https://ngrok.com): `ngrok http 8000`)
-2. In Intric → Settings → MCP Connections, add the URL ending in `/mcp`
-3. Paste the JWT token from `generate_token.py` as the API Key
+## Domain reference
 
-## Validate Against the Live API
+**Document types** (`document_type` parameter in `search_documents`):
+
+| Finnish name | Abbreviation in Tunniste |
+|---|---|
+| Hallituksen esitys | `HE` |
+| Lakialoite | `LA` |
+| Kirjallinen kysymys | `KK` |
+| Valiokunnan mietintö | `{committee}VM` |
+| Valiokunnan lausunto | `{committee}VL` |
+
+**Committee abbreviations** (`committee` parameter):
+
+`PeV` (constitutional), `LaV` (legal affairs), `SiV` (education), `StV` (social affairs), `HaV` (administration), `TaV` (commerce), `LiV` (transport), `UaV` (foreign affairs), `PuV` (defence)
+
+**Vote values** (returned in `get_vote_result`):
+
+`Jaa` (aye), `Ei` (no), `Poissa` (absent), `Tyhjaa` (abstain)
+
+**Tunniste format:** Parliamentary identifiers follow the pattern `HE 7/2024 vp` — type, number, year, and session marker (`vp` = valtiopäivät, `rd` = riksdag/Swedish).
+
+## Validation
 
 ```bash
-python3 validate.py
+python validate.py
 ```
 
-Runs 6 checks against the real Finnish Parliament API and prints PASS/FAIL for each.
+Runs 6 live checks against the real API: table discovery, document search (HE 2024, no raw XML in results), vote search by keyword, per-MP vote result totals (100–210 votes), active MP count (180–210), and full document text extraction (≥100 chars). Exits 0 on all pass, 1 on any failure.
 
-## Project Structure
+## License
 
-```
-eduskunta-mcp/
-├── server.py          # FastMCP server — tool registration, auth, middleware
-├── client.py          # EduskuntaClient — all HTTP and pagination logic
-├── parsers.py         # rows_to_dicts, XML/PDF text extraction, field helpers
-├── validate.py        # End-to-end validation against the live API
-├── generate_token.py  # Generate a JWT for Intric's API Key field
-├── requirements.txt
-└── .env.example
-```
-
-## Key API Notes
-
-The Finnish Parliament API (`avoindata.eduskunta.fi/api/v1`) uses a **columnar response format**:
-
-```json
-{
-  "columnNames": ["Id", "XmlData", "Eduskuntatunnus", "..."],
-  "rowData": [["12345", "<xml>...", "HE 1/2024 vp", "..."]],
-  "hasMore": true
-}
-```
-
-All rows are converted to named dicts immediately via `rows_to_dicts()`. Pagination is
-driven by `hasMore`, not row count.
-
-Document search uses the `/vaski/text` full-text endpoint. Document metadata (title,
-type, year) is extracted from the `EduskuntaTunnus` field and XML content — these are
-**not** separate columns in `VaskiData`.
+MIT
